@@ -246,11 +246,15 @@ func (s *Scheduler) isDue(schedule string, taskID string, catchup bool, now time
 
 	state := s.state.GetTask(taskID)
 
-	// Never run before: skip and wait for the next natural cron window.
+	// No prior history: fire only on the next natural cron window.
 	// Don't treat "no state" as "missed everything" — that would cause all
 	// tasks to fire simultaneously on first start or after state file deletion.
+	// Catchup is skipped when there's no history; we don't know what was missed.
 	if state == nil || state.LastSuccess == nil {
-		return false
+		truncated := now.In(loc).Truncate(time.Minute)
+		truncatedUTC := truncated.UTC()
+		prev := truncatedUTC.Add(-1 * time.Minute)
+		return sched.Next(prev).Equal(truncatedUTC)
 	}
 
 	lastSuccess := *state.LastSuccess
