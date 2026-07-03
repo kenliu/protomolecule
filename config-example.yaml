@@ -1,0 +1,62 @@
+# Example protomolecule configuration.
+#
+# Copy this to ~/.protomolecule/protomolecule.yaml (the default location) or
+# pass it explicitly with --config. Edits are picked up via live reload while
+# the daemon is running.
+
+# IANA timezone used to evaluate all cron schedules. Defaults to system local.
+timezone: "America/New_York"
+
+# Directory in which `claude -p` runs for each task — the project your agents
+# operate on. Supports a leading "~". Defaults to the current directory.
+working_dir: "~/code/my-project"
+
+# Global defaults (each can be overridden per task).
+worker_slots: 5           # max concurrent tasks
+max_retries: 2            # retry attempts on failure
+retry_delay_seconds: 30   # seconds between retries
+timeout_minutes: 10       # per-task timeout
+
+# Workflows: groups of tasks that share a schedule and can depend on each
+# other. Dependents run automatically when their parent succeeds.
+workflows:
+  - id: morning-pipeline
+    description: "Fetch data, process it, then post a summary"
+    schedule: "0 8 * * 1-5"     # 8:00am on weekdays
+    catchup: true                # fire once for the most recent missed window
+    tasks:
+      - id: fetch-data
+        requires_network: true
+        prompt: "Fetch the latest data and save it to the working directory"
+      - id: process-data
+        depends_on: fetch-data
+        timeout_minutes: 30      # override the global timeout for this task
+        prompt: "Process the fetched data and write a report"
+      - id: post-summary
+        depends_on: process-data
+        requires_network: true
+        prompt: "Post the report summary to the team channel"
+
+# Standalone: independent tasks, each with its own schedule.
+standalone:
+  - id: health-check
+    description: "Check system health every 15 minutes"
+    schedule: "*/15 * * * *"
+    catchup: false
+    requires_network: true       # skip if offline (default: true)
+    prompt: "Check system health and alert if anything looks wrong"
+
+  - id: weekly-digest
+    description: "Generate and send the weekly digest"
+    schedule: "0 9 * * 1"        # 9:00am Monday
+    catchup: true
+    model: sonnet                # override the model for this task
+    max_retries: 3               # override the global retry count
+    retry_delay_seconds: 60
+    prompt: "Generate the weekly digest and email it to the team"
+
+  - id: manual-task
+    description: "Only runs when triggered with `protomolecule run --task manual-task`"
+    schedule: "on-demand"        # never fires on a schedule
+    catchup: false
+    prompt: "Do the thing that only runs when I ask for it"

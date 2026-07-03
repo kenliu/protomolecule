@@ -1,0 +1,29 @@
+# Build artifacts
+bin/
+protomolecule
+*.exe
+
+# Go test / coverage output
+*.test
+coverage.out
+coverage.html
+*.prof
+
+# Protomolecule runtime data (state, IPC socket, logs, workflow output)
+# Generated under the runtime dir; only present if run from the repo.
+state/
+logs/
+output/
+*.sock
+
+# Local config / secrets
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
