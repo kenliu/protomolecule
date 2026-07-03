@@ -30,16 +30,16 @@ func defaultConfigPath() string {
 	return filepath.Join(home, configDirName, "protomolecule.yaml")
 }
 
-// runtimeDir returns the directory where protomolecule stores its runtime
-// files (state, socket, logs, output): the directory containing the config
-// file. With the default config path this resolves to ~/.protomolecule. All
-// subcommands derive runtime paths this way so they locate the same socket,
-// state, and logs regardless of the current working directory.
-func runtimeDir(configPath string) string {
-	if abs, err := filepath.Abs(configPath); err == nil {
-		return filepath.Dir(abs)
+// runtimeDir returns the global protomolecule runtime directory: ~/.protomolecule.
+// All runtime files (state, socket, logs) are stored here regardless of where
+// the config file lives. Protomolecule is a single-instance global service, so
+// the runtime dir is always the same on a given machine.
+func runtimeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return configDirName
 	}
-	return filepath.Dir(configPath)
+	return filepath.Join(home, configDirName)
 }
 
 func main() {
@@ -76,13 +76,13 @@ func main() {
 	case "run":
 		runCmd(configPath, args[1:], verbose)
 	case "status":
-		statusCmd(configPath, args[1:])
+		statusCmd(args[1:])
 	case "watch":
-		watchCmd(configPath)
+		watchCmd()
 	case "visualize":
 		visualizeCmd(configPath, args[1:])
 	case "logs":
-		logsCmd(configPath, args[1:])
+		logsCmd(args[1:])
 	case "install-plist":
 		if err := installPlist(); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -151,7 +151,7 @@ func runDaemon(configPath string, verbose bool) {
 	}
 	logger.Info("pre-flight ok", "claude", claudePath)
 
-	root := runtimeDir(configPath)
+	root := runtimeDir()
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -274,7 +274,7 @@ func runCmd(configPath string, args []string, verbose bool) {
 		os.Exit(1)
 	}
 
-	root := runtimeDir(configPath)
+	root := runtimeDir()
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -322,8 +322,8 @@ func runCmd(configPath string, args []string, verbose bool) {
 }
 
 // watchCmd handles the "watch" subcommand — live-updating TUI dashboard.
-func watchCmd(configPath string) {
-	socketPath := filepath.Join(runtimeDir(configPath), "state", "protomolecule.sock")
+func watchCmd() {
+	socketPath := filepath.Join(runtimeDir(), "state", "protomolecule.sock")
 	if err := RunTUI(socketPath); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -331,8 +331,8 @@ func watchCmd(configPath string) {
 }
 
 // statusCmd handles the "status" subcommand.
-func statusCmd(configPath string, args []string) {
-	socketPath := filepath.Join(runtimeDir(configPath), "state", "protomolecule.sock")
+func statusCmd(args []string) {
+	socketPath := filepath.Join(runtimeDir(), "state", "protomolecule.sock")
 	asJSON := false
 
 	for _, arg := range args {
@@ -464,7 +464,7 @@ func seedNewTaskState(addedIDs []string, state *StateStore, now time.Time, logge
 
 // visualizeCmd handles the "visualize" subcommand.
 func visualizeCmd(configPath string, args []string) {
-	root := runtimeDir(configPath)
+	root := runtimeDir()
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {

@@ -25,8 +25,8 @@ type logEntry struct {
 // logsCmd implements the "logs" subcommand.
 // It reads protomolecule.log (line-delimited JSON), parses each entry,
 // and filters/formats output according to the provided flags.
-func logsCmd(configPath string, args []string) {
-	logPath := filepath.Join(runtimeDir(configPath), "logs", "protomolecule.log")
+func logsCmd(args []string) {
+	logPath := filepath.Join(runtimeDir(), "logs", "protomolecule.log")
 	taskFilter := ""
 	runFilter := ""
 	outputOnly := false
