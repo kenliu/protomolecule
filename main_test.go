@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -404,5 +405,44 @@ func TestProjectRoot_IsAbsolutePath(t *testing.T) {
 	root := projectRoot()
 	if !filepath.IsAbs(root) {
 		t.Errorf("projectRoot should return an absolute path, got %q", root)
+	}
+}
+
+// ============================================================================
+// logDestination Tests
+// ============================================================================
+
+// When stderr is a TTY (foreground), logs go to BOTH the file and stderr.
+func TestLogDestination_TTY_WritesToBoth(t *testing.T) {
+	var file, stderr bytes.Buffer
+	dst := logDestination(&file, &stderr, true)
+
+	if _, err := dst.Write([]byte("hello\n")); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	if got := file.String(); got != "hello\n" {
+		t.Errorf("file: got %q, want %q", got, "hello\n")
+	}
+	if got := stderr.String(); got != "hello\n" {
+		t.Errorf("stderr: got %q, want %q", got, "hello\n")
+	}
+}
+
+// When stderr is NOT a TTY (e.g. under launchd), logs go to the file only, so
+// entries are not duplicated into the plist's stderr sink.
+func TestLogDestination_NonTTY_WritesToFileOnly(t *testing.T) {
+	var file, stderr bytes.Buffer
+	dst := logDestination(&file, &stderr, false)
+
+	if _, err := dst.Write([]byte("hello\n")); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	if got := file.String(); got != "hello\n" {
+		t.Errorf("file: got %q, want %q", got, "hello\n")
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr should be empty, got %q", stderr.String())
 	}
 }

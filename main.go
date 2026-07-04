@@ -136,6 +136,26 @@ func projectRoot() string {
 	return cwd
 }
 
+// logDestination decides where the daemon's structured logs go. Logs always go
+// to logFile (which the daemon owns), so `logs`/`watch`/`status` work regardless
+// of how the daemon was launched. When attached to a terminal (stderrIsTTY),
+// logs are also echoed to stderr for foreground visibility; under launchd there
+// is no TTY, so we write to the file only and avoid duplicating every entry into
+// the plist's stderr sink.
+func logDestination(logFile io.Writer, stderr io.Writer, stderrIsTTY bool) io.Writer {
+	if stderrIsTTY {
+		return io.MultiWriter(stderr, logFile)
+	}
+	return logFile
+}
+
+// stderrIsTTY reports whether os.Stderr is attached to a terminal (character
+// device), as opposed to a file or pipe (e.g. under launchd).
+func stderrIsTTY() bool {
+	fi, err := os.Stderr.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
 // runDaemon starts the scheduler in daemon (foreground) mode.
 func runDaemon(configPath string, verbose bool) {
 	root := runtimeDir()
@@ -159,11 +179,7 @@ func runDaemon(configPath string, verbose bool) {
 	}
 	defer logFile.Close()
 
-	var logDst io.Writer = logFile
-	if fi, statErr := os.Stderr.Stat(); statErr == nil && fi.Mode()&os.ModeCharDevice != 0 {
-		logDst = io.MultiWriter(os.Stderr, logFile)
-	}
-	logger := NewJSONLogger(logDst, verbose)
+	logger := NewJSONLogger(logDestination(logFile, os.Stderr, stderrIsTTY()), verbose)
 
 	// Pre-flight: verify the claude binary is available.
 	// Without it every task will fail with "fatal" status immediately.
