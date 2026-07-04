@@ -65,7 +65,7 @@ Global flags:
 
 ### `server`
 
-Starts the scheduler in the foreground. Logs structured JSON to stderr. Handles SIGINT/SIGTERM for graceful shutdown.
+Starts the scheduler in the foreground. Writes structured JSON logs to `<runtime-dir>/logs/protomolecule.log` (and also echoes them to your terminal when run interactively). Handles SIGINT/SIGTERM for graceful shutdown. See [Logs](#logs) for details.
 
 ```bash
 protomolecule --config /path/to/protomolecule.yaml server
@@ -142,11 +142,11 @@ Configuration lives in `protomolecule.yaml`. The default location is
 
 Protomolecule separates two distinct locations:
 
-- **Runtime directory** — the directory containing the config file (so
-  `~/.protomolecule` by default). State (`state/`), the IPC socket, logs
-  (`logs/`), and workflow output (`output/`) all live here. Every subcommand
-  derives these paths from `--config`, so `status`, `watch`, and `logs` find
-  the running daemon's socket no matter what directory you invoke them from.
+- **Runtime directory** — a fixed global location, `~/.protomolecule`,
+  regardless of where the config file lives. State (`state/`), the IPC socket,
+  logs (`logs/`), and workflow output (`output/`) all live here. Because the
+  location is fixed, `status`, `watch`, and `logs` find the running daemon's
+  socket and log file no matter what directory you invoke them from.
 - **Working directory** — set with the `working_dir` config field. This is the
   directory in which `claude -p` runs for each task: the project your agents
   operate on. If unset, it defaults to the current directory (with a warning).
@@ -248,7 +248,26 @@ The `state/` directory is created automatically. Don't edit the state file manua
 
 ## Logs
 
-When running as a daemon, structured JSON logs are written to stderr. When installed via `install-plist`, both stdout and stderr go to `logs/protomolecule.log`.
+The daemon writes structured JSON logs (one entry per line) directly to:
+
+```
+<runtime-dir>/logs/protomolecule.log
+```
+
+The runtime directory is `~/.protomolecule` by default (see [Directories](#directories)), so logs live at `~/.protomolecule/logs/protomolecule.log`. The daemon opens and writes this file itself, so it is populated the same way no matter how the daemon was started — foreground (`server`) or via launchd. Each `claude -p` subprocess's output is streamed line by line into this file, tagged with the task ID.
+
+When you run `server` **interactively** (attached to a terminal), logs are also echoed to stderr so you can watch them live. Under launchd there is no terminal, so logs go only to the file — no duplication.
+
+Read logs with the built-in `logs` subcommand (it parses and filters this file); `watch` and `status` read from the same file over the socket:
+
+```bash
+protomolecule logs                        # all entries
+protomolecule logs --task <id> --run last # last run of one task
+protomolecule logs --output               # raw claude output lines only
+protomolecule logs --status failed        # failed task_end entries
+```
+
+**launchd stderr sink.** When installed via `install-plist`, the plist also redirects the process's stdout/stderr to a *separate* file, `<runtime-dir>/logs/protomolecule.stderr.log`. This only captures crashes/panics and any early startup errors emitted before the logger is initialized — the structured logs themselves go to `protomolecule.log`, not here.
 
 ## Architecture
 

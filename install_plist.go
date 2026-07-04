@@ -37,9 +37,9 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>{{PROJECT_ROOT}}/logs/protomolecule.log</string>
+    <string>{{RUNTIME_DIR}}/logs/protomolecule.stderr.log</string>
     <key>StandardErrorPath</key>
-    <string>{{PROJECT_ROOT}}/logs/protomolecule.log</string>
+    <string>{{RUNTIME_DIR}}/logs/protomolecule.stderr.log</string>
 </dict>
 </plist>
 `
@@ -174,10 +174,13 @@ func installPlist() error {
 	plistContent = strings.ReplaceAll(plistContent, "{{BINARY_PATH}}", binaryPath)
 	plistContent = strings.ReplaceAll(plistContent, "{{CONFIG_PATH}}", cfgPath)
 	plistContent = strings.ReplaceAll(plistContent, "{{PROJECT_ROOT}}", projectRoot)
+	plistContent = strings.ReplaceAll(plistContent, "{{RUNTIME_DIR}}", runtimeDir())
 	plistContent = strings.ReplaceAll(plistContent, "{{ENV_VARS}}", envXML.String())
 
-	// Create logs directory
-	logsDir := filepath.Join(projectRoot, "logs")
+	// Create the runtime logs directory — this is where the daemon writes
+	// protomolecule.log (and where launchd sends its stderr sink), matching the
+	// fixed runtime dir the daemon and `logs`/`watch`/`status` all use.
+	logsDir := filepath.Join(runtimeDir(), "logs")
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
 		return fmt.Errorf("creating logs directory: %w", err)
 	}

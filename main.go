@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -137,7 +138,32 @@ func projectRoot() string {
 
 // runDaemon starts the scheduler in daemon (foreground) mode.
 func runDaemon(configPath string, verbose bool) {
-	logger := NewJSONLogger(os.Stderr, verbose)
+	root := runtimeDir()
+
+	// Open the daemon log file and route structured logs to it directly, so
+	// `logs`/`watch`/`status` work regardless of how the daemon was launched
+	// (previously logs only landed on disk via launchd stdout/stderr
+	// redirection). When attached to a terminal (foreground), also echo to
+	// stderr for visibility; under launchd there is no TTY, so we write to the
+	// file only and avoid duplicating every entry into the plist's stderr sink.
+	logsDir := filepath.Join(root, "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to create logs directory %s: %v\n", logsDir, err)
+		os.Exit(1)
+	}
+	logFilePath := filepath.Join(logsDir, "protomolecule.log")
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: failed to open log file %s: %v\n", logFilePath, err)
+		os.Exit(1)
+	}
+	defer logFile.Close()
+
+	var logDst io.Writer = logFile
+	if fi, statErr := os.Stderr.Stat(); statErr == nil && fi.Mode()&os.ModeCharDevice != 0 {
+		logDst = io.MultiWriter(os.Stderr, logFile)
+	}
+	logger := NewJSONLogger(logDst, verbose)
 
 	// Pre-flight: verify the claude binary is available.
 	// Without it every task will fail with "fatal" status immediately.
@@ -151,16 +177,15 @@ func runDaemon(configPath string, verbose bool) {
 	}
 	logger.Info("pre-flight ok", "claude", claudePath)
 
-	root := runtimeDir()
-
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		logger.Error("failed to load config", "error", err.Error())
 		os.Exit(1)
 	}
 
-	// Ensure runtime directories exist before writing state, socket, or logs.
-	for _, sub := range []string{"state", "logs"} {
+	// Ensure remaining runtime directories exist before writing state or the
+	// socket. The logs dir was already created above.
+	for _, sub := range []string{"state"} {
 		if err := os.MkdirAll(filepath.Join(root, sub), 0755); err != nil {
 			logger.Error("failed to create runtime directory", "dir", sub, "error", err.Error())
 			os.Exit(1)
@@ -199,7 +224,7 @@ func runDaemon(configPath string, verbose bool) {
 	socketPath := filepath.Join(root, "state", "protomolecule.sock")
 	statusServer := NewStatusServer(socketPath, scheduler, state, pool, clock)
 	statusServer.liveOutputs = liveOutputs
-	statusServer.logFilePath = filepath.Join(root, "logs", "protomolecule.log")
+	statusServer.logFilePath = logFilePath
 	if err := statusServer.Start(); err != nil {
 		logger.Error("failed to start status server", "error", err.Error())
 		os.Exit(1)
